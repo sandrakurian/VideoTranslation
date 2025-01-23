@@ -1,0 +1,45 @@
+1
+00:00:00,000 --> 00:00:08,400
+Maintenant que nous avons créé notre voyage, nous allons créer une ligne de frais d'hôtel.
+2
+00:00:09,599 --> 00:00:15,779
+Pour ce faire, nous allons changer notre identification de type d'enregistrement à l'hôtel.
+3
+00:00:18,359 --> 00:00:21,980
+Nous allons sélectionner notre option d'expansion appropriée.
+4
+00:00:23,520 --> 00:00:29,059
+Nous allons fixer notre date de dépense à notre dernière date de voyage.
+5
+00:00:32,320 --> 00:00:38,340
+Nous allons mettre notre nom de marchand au nom de l'hôtel où nous avons séjourné.
+6
+00:00:40,000 --> 00:00:47,859
+Notre montant total sera le montant que nous avons payé à l'hôtel comme indiqué sur notre facture.
+7
+00:00:49,839 --> 00:00:54,619
+Notre date d'arrivée sera la date que nous avons enregistrée à l'hôtel.
+8
+00:00:56,560 --> 00:01:01,840
+Et notre date de départ sera la date de sortie de l'hôtel.
+9
+00:01:04,239 --> 00:01:12,620
+Événement sponsorisé par l'État, nous disons oui ou non sur la question de savoir si l'événement auquel nous avons assisté a en fait été sponsorisé par l'État.
+10
+00:01:14,080 --> 00:01:22,260
+Notre nuit au-dessus de la limite de l'état, nous disons oui ou non à savoir si ou non le tarif de chambre nocturne,
+11
+00:01:22,560 --> 00:01:28,819
+qui est le tarif de la chambre elle-même est plus de 225 par nuit.
+12
+00:01:30,740 --> 00:01:37,739
+Ensuite, nous identifions si les dépenses ont été payées par paiement personnel, ce qui est hors de la poche.
+13
+00:01:38,739 --> 00:01:48,859
+Qu'il ait été payé ou non par carte P délivrée par l'État ou qu'il ait été payé ou non par un bon de commande MFMP AOD.
+14
+00:01:50,280 --> 00:01:51,980
+Et puis on a réussi à sauver.
+15
+00:01:54,920 --> 00:02:00,219
+Et maintenant nous avons créé une ligne de frais d'hôtel.
