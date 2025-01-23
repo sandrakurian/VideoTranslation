@@ -1,0 +1,60 @@
+1
+00:00:00,000 --> 00:00:08,400
+Now that we have created our trip, we are going to create a hotel expense line item.
+
+2
+00:00:09,599 --> 00:00:15,779
+To do that, we're going to change our record type ID to hotel.
+
+3
+00:00:18,359 --> 00:00:21,980
+We're going to select our appropriate expansion option.
+
+4
+00:00:23,520 --> 00:00:29,059
+We're going to set our expense date to our last date of travel.
+
+5
+00:00:32,320 --> 00:00:38,340
+We're going to set our merchant name to the name of the hotel that we stayed at.
+
+6
+00:00:40,000 --> 00:00:47,859
+Our total amount is going to be the amount we paid to the hotel as shown on our invoice.
+
+7
+00:00:49,839 --> 00:00:54,619
+Our check-in date is going to be the date we checked into the hotel.
+
+8
+00:00:56,560 --> 00:01:01,840
+And our check-out date is going to be the date we checked out of the hotel.
+
+9
+00:01:04,239 --> 00:01:12,620
+State Sponsored event, we say yes or no as to whether the event we attended was in fact state sponsored.
+
+10
+00:01:14,080 --> 00:01:22,260
+Our night over state limit, we say yes or no as to whether or not the nightly room rate,
+
+11
+00:01:22,560 --> 00:01:28,819
+which is the room rate itself is more than 225 a night.
+
+12
+00:01:30,740 --> 00:01:37,739
+And then we identify whether or not the expense was paid by personal payment, which is out of pocket.
+
+13
+00:01:38,739 --> 00:01:48,859
+Whether or not it was paid by state issued P card or whether or not it was paid by MFMP AOD purchase order.
+
+14
+00:01:50,280 --> 00:01:51,980
+And then we hit save.
+
+15
+00:01:54,920 --> 00:02:00,219
+And now we have created a hotel expense line item.
+
