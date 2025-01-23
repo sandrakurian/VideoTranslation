@@ -86,7 +86,7 @@ def translate_srt(input_file, output_file, source_lang="en", target_lang="fr"):
                     )
                     outputs = model.generate(**inputs)
                     translated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-                    tgt.write(translated_text + "\n")
+                    tgt.write(translated_text + "\n\n")
         print(f"Translated SRT saved to {output_file}")
     except Exception as e:
         print(f"Error during translation: {e}")
