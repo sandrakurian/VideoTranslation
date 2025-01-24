@@ -28,3 +28,4 @@ ro	    Romanian
 th	    Thai
 vi	    Vietnamese
 uk	    Ukrainian
+ml      Malayalam
