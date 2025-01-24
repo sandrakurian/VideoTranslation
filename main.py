@@ -2,6 +2,9 @@ import os
 import subprocess
 import whisper
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
+import re
+from TTS.api import TTS
+from pydub import AudioSegment
 
 
 # Utility function to ensure paths work across platforms
@@ -114,11 +117,124 @@ def process_video(input_video):
         print(f"Audio file {audio_output} not found.")
 
 
-if __name__ == "__main__":
-    # Specify the input video file
-    input_video_file = "video.mp4"  # Replace with your video filename
+def generate_precise_audio(srt_file, output_audio_file, language='fr'):
+    """
+    Generate audio with exact timing matching SRT timestamps
+    """
+    # Ensure results directory exists
+    os.makedirs(os.path.dirname(output_audio_file), exist_ok=True)
+    
+    # Validate input file
+    if not os.path.exists(srt_file):
+        return
+    
+    try:
+        # Initialize TTS model for French
+        tts = TTS(model_name="tts_models/fr/css10/vits")
+        
+        # Read SRT file and parse timestamps and text
+        segments = []
+        with open(srt_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # Use regex to parse SRT file
+        pattern = re.compile(r'(\d+)\n([\d:,]+)\s*-->\s*([\d:,]+)\n(.*?)(?=\n\n|\Z)', re.DOTALL)
+        
+        for match in pattern.finditer(content):
+            # Ignore index, parse timestamp and text
+            start_time, end_time, text = match.group(2), match.group(3), match.group(4)
+            
+            # Convert timestamp to milliseconds
+            start_ms = _timestamp_to_ms(start_time)
+            end_ms = _timestamp_to_ms(end_time)
+            
+            segments.append({
+                'text': text.strip(),
+                'start_ms': start_ms,
+                'end_ms': end_ms,
+                'duration_ms': end_ms - start_ms
+            })
+        
+        # Create a list to store individual audio segments
+        audio_segments = []
+        
+        for segment in segments:
+            # Generate audio for the specific segment
+            temp_audio_file = f"temp_segment_{segments.index(segment)}.wav"
+            tts.tts_to_file(text=segment['text'], file_path=temp_audio_file)
+            
+            # Load generated audio
+            generated_audio = AudioSegment.from_wav(temp_audio_file)
+            
+            # Adjust speed if needed
+            if generated_audio.duration_seconds * 1000 > segment['duration_ms']:
+                # Speed up
+                playback_speed = generated_audio.duration_seconds * 1000 / segment['duration_ms']
+                generated_audio = generated_audio.speedup(playback_speed=playback_speed)
+            elif generated_audio.duration_seconds * 1000 < segment['duration_ms']:
+                # Pad with silence
+                silence = AudioSegment.silent(duration=segment['duration_ms'] - int(generated_audio.duration_seconds * 1000))
+                generated_audio += silence
+            
+            # Prepare silent audio before the segment if needed
+            if not audio_segments:
+                # First segment starts at 0
+                padding_before = AudioSegment.silent(duration=segment['start_ms'])
+                full_segment = padding_before + generated_audio
+            else:
+                # Calculate padding needed between previous segment and this one
+                last_segment_end = audio_segments[-1]['end_ms']
+                padding_duration = max(0, segment['start_ms'] - last_segment_end)
+                padding = AudioSegment.silent(duration=padding_duration)
+                full_segment = padding + generated_audio
+            
+            audio_segments.append({
+                'audio': full_segment,
+                'start_ms': segment['start_ms'],
+                'end_ms': segment['start_ms'] + len(full_segment)
+            })
+            
+            # Clean up temporary file
+            os.remove(temp_audio_file)
+        
+        # Combine all segments
+        final_audio = sum(segment['audio'] for segment in audio_segments)
+        
+        # Export final audio
+        final_audio.export(output_audio_file, format="wav")
+    
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
 
-    if os.path.exists(input_video_file):
-        process_video(input_video_file)
-    else:
-        print(f"Input video file not found: {input_video_file}")
+def _timestamp_to_ms(timestamp):
+    """
+    Convert SRT timestamp to milliseconds
+    """
+    hours, minutes, seconds_ms = timestamp.replace(',', '.').split(':')
+    seconds, ms = seconds_ms.split('.')
+    
+    total_ms = (int(hours) * 3600 + 
+                int(minutes) * 60 + 
+                int(seconds)) * 1000 + \
+               int(float(f"0.{ms}") * 1000)
+    
+    return total_ms
+
+if __name__ == "__main__":
+    # # Specify the input video file
+    # input_video_file = "video.mp4"  # Replace with your video filename
+
+    # if os.path.exists(input_video_file):
+    #     process_video(input_video_file)
+    # else:
+    #     print(f"Input video file not found: {input_video_file}")
+
+    # Specify full paths
+    srt_file = os.path.join('results', 'transcription_fr.srt')
+    output_audio_file = os.path.join('results', 'precise_french_audio.wav')
+    
+    generate_precise_audio(
+        srt_file=srt_file, 
+        output_audio_file=output_audio_file
+    )
