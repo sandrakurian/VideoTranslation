@@ -1,0 +1,31 @@
+Code	Language
+----------------------------------
+en	    English
+fr	    French
+es	    Spanish
+de	    German
+it	    Italian
+pt	    Portuguese
+ru	    Russian
+zh	    Chinese (Simplified)
+zh-TW	Chinese (Traditional)
+ja	    Japanese
+ko	    Korean
+ar	    Arabic
+hi	    Hindi
+bn	    Bengali
+tr	    Turkish
+nl	    Dutch
+el	    Greek
+pl	    Polish
+sv	    Swedish
+da	    Danish
+fi	    Finnish
+no	    Norwegian
+cs	    Czech
+hu	    Hungarian
+ro	    Romanian
+th	    Thai
+vi	    Vietnamese
+uk	    Ukrainian
+ml      Malayalam
