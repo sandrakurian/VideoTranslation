@@ -6,6 +6,8 @@ import re
 import torch
 from TTS.api import TTS
 from pydub import AudioSegment
+import re
+from typing import List, Tuple
 
 import logging
 # Set up logging
@@ -105,10 +107,84 @@ def split_audio(video, video_blank, audio):
     extract_audio(video, audio)
     create_mute_video(video, video_blank)
 
+def split_into_sentences(text: str) -> List[str]:
+    """Split text into sentences using punctuation markers."""
+    # Split on period, exclamation mark, or question mark followed by space or newline
+    sentences = re.split(r'([.!?])\s+', text)
+    # Recombine sentences with their punctuation
+    result = []
+    for i in range(0, len(sentences)-1, 2):
+        if i+1 < len(sentences):
+            result.append(sentences[i] + sentences[i+1])
+    # Add the last segment if there's an odd number of segments
+    if len(sentences) % 2 == 1:
+        result.append(sentences[-1])
+    return [s.strip() for s in result if s.strip()]
+
+def transcribe_audio_with_sentence_timestamps(audio_path: str, output_srt_path: str):
+    """Transcribe audio using Whisper and save it as an SRT file with sentence-level timestamps."""
+    try:
+        # Load the model
+        model = whisper.load_model("base")
+        
+        # Get transcription with word-level timestamps
+        result = model.transcribe(audio_path, word_timestamps=True)
+        
+        # Process segments to combine into sentences
+        current_sentence = []
+        sentence_segments = []
+        current_start = None
+        
+        for segment in result["segments"]:
+            text = segment["text"].strip()
+            if not current_start:
+                current_start = segment["start"]
+            
+            current_sentence.append(text)
+            
+            # Check if this segment ends with sentence-ending punctuation
+            if text.rstrip()[-1] in ".!?" if text.rstrip() else False:
+                sentence_segments.append({
+                    "start": current_start,
+                    "end": segment["end"],
+                    "text": " ".join(current_sentence).strip()
+                })
+                current_sentence = []
+                current_start = None
+        
+        # Handle any remaining text
+        if current_sentence:
+            sentence_segments.append({
+                "start": current_start,
+                "end": result["segments"][-1]["end"],
+                "text": " ".join(current_sentence).strip()
+            })
+        
+        # Write to SRT file
+        with open(output_srt_path, "w", encoding="utf-8") as srt_file:
+            for i, segment in enumerate(sentence_segments, start=1):
+                start_time = format_timestamp(segment["start"])
+                end_time = format_timestamp(segment["end"])
+                text = segment["text"]
+                
+                srt_file.write(f"{i}\n{start_time} --> {end_time}\n{text}\n\n")
+                
+        print(f"Transcription saved to {output_srt_path}")
+        
+    except Exception as e:
+        print(f"Error during transcription: {e}")
+
+def format_timestamp(seconds: float) -> str:
+    """Format seconds into SRT-compatible timestamp."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    millisecs = int((seconds % 1) * 1000)
+    return f"{hours:02}:{minutes:02}:{secs:02},{millisecs:03}"
 
 def transcribe_translate(audio, srt_orig, srt_trans, lang_input, lang_output):
     """Transcribe audio and translate the transcription."""
-    transcribe_audio_with_timestamps(audio, srt_orig)
+    transcribe_audio_with_sentence_timestamps(audio, srt_orig)
     translate_srt(srt_orig, srt_trans, source_lang=lang_input, target_lang=lang_output)
 
 def extract_reference_audio(input_video, output_reference, duration_seconds=30):
@@ -284,7 +360,7 @@ if __name__ == "__main__":
     extract_reference_audio(video_input, reference_audio)
     
     # Rest of the pipeline
-    split_audio(video_input, video_no_audio, audio_input)
+    # split_audio(video_input, video_no_audio, audio_input)
     transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
-    generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
-    dub_video(video_output, video_no_audio, audio_output)
+    # generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
+    # dub_video(video_output, video_no_audio, audio_output)
