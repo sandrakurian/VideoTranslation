@@ -128,7 +128,10 @@ def extract_reference_audio(input_video, output_reference, duration_seconds=30):
         print(f"Error during reference audio extraction: {e}")
 
 def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output):
-    """Generate TTS audio using voice cloning with language fallback support."""
+    """
+    Generate TTS audio using XTTS-v2 model for voice cloning.
+    https://huggingface.co/coqui/XTTS-v2
+    """
     os.makedirs(os.path.dirname(audio_output), exist_ok=True)
 
     if not os.path.exists(srt_output):
@@ -138,48 +141,14 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
         raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
 
     try:
-        logger.info("Initializing TTS model...")
+        logger.info("Initializing XTTS-v2 model...")
         device = "cuda" if torch.cuda.is_available() else "cpu"
         logger.info(f"Using device: {device}")
         
-        # Try different model options with specific language support
-        model_configs = [
-            {
-                "name": "tts_models/multilingual/multi-dataset/xtts_v2",
-                "languages": ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn"]
-            },
-            {
-                "name": "tts_models/multilingual/multi-dataset/your_tts",
-                "languages": ["en", "fr-fr", "pt-br"]
-            },
-            {
-                "name": f"tts_models/{lang_output}/css10/vits",
-                "languages": [lang_output]
-            }
-        ]
+        # Initialize XTTS-v2 model
+        tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", 
+                  gpu=(device == "cuda"))
         
-        tts = None
-        selected_model = None
-        
-        for model_config in model_configs:
-            try:
-                logger.info(f"Attempting to load model: {model_config['name']}")
-                temp_tts = TTS(model_name=model_config["name"], progress_bar=True)
-                if lang_output in model_config["languages"]:
-                    tts = temp_tts
-                    selected_model = model_config
-                    logger.info(f"Successfully loaded model with {lang_output} support: {model_config['name']}")
-                    break
-                else:
-                    logger.info(f"Model {model_config['name']} doesn't support {lang_output}")
-            except Exception as e:
-                logger.warning(f"Failed to load model {model_config['name']}: {str(e)}")
-                continue
-        
-        if tts is None:
-            raise Exception(f"No TTS model available that supports language: {lang_output}")
-
-        # Rest of the function remains the same until the TTS generation part
         logger.info("Loading SRT content...")
         with open(srt_output, "r", encoding="utf-8") as f:
             content = f.read()
@@ -205,7 +174,7 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
             logger.info(f"Processing segment {i}/{len(segments)}: {segment['text'][:50]}...")
             
             try:
-                # Generate speech using the selected model
+                # Generate speech using XTTS-v2
                 logger.debug(f"Generating audio for segment {i}")
                 tts.tts_to_file(
                     text=segment["text"],
@@ -296,11 +265,11 @@ if __name__ == "__main__":
     # Add debug test before main execution
     test_tts_models()
     
-    video_input = "video_eng.mp4"
-    lang_input = "en"
-    lang_output = "es"
+    video_input = "results/video2/dcf_es.mp4"
+    lang_input = "es"
+    lang_output = "en"
 
-    results_dir = "results/to_spanish"
+    results_dir = "results/video2/to_english"
     os.makedirs(results_dir, exist_ok=True)
 
     video_no_audio = os.path.join(results_dir, "video_no_audio.mp4")
