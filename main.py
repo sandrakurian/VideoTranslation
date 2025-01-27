@@ -1,18 +1,13 @@
 import os
 import subprocess
 import whisper
-from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 import re
 import torch
 from TTS.api import TTS
 from pydub import AudioSegment
-import re
-from typing import List, Tuple
+from typing import Tuple
+from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 
-import logging
-# Set up logging
-logging.basicConfig(level=logging.DEBUG)
-logger = logging.getLogger(__name__)
 
 # --------- HELPER FUNCTIONS --------- #
 
@@ -27,7 +22,6 @@ def extract_audio(input_video, output_audio):
     except subprocess.CalledProcessError as e:
         print(f"Error during audio extraction: {e}")
 
-
 def create_mute_video(input_video, output_video):
     """Create a muted version of the video."""
     try:
@@ -39,25 +33,6 @@ def create_mute_video(input_video, output_video):
     except subprocess.CalledProcessError as e:
         print(f"Error creating mute video: {e}")
 
-
-def transcribe_audio_with_timestamps(audio_path, output_srt_path):
-    """Transcribe audio using Whisper and save it as an SRT file."""
-    try:
-        model = whisper.load_model("base")
-        result = model.transcribe(audio_path, word_timestamps=True)
-
-        with open(output_srt_path, "w", encoding="utf-8") as srt_file:
-            for i, segment in enumerate(result["segments"], start=1):
-                start_time = format_timestamp(segment["start"])
-                end_time = format_timestamp(segment["end"])
-                text = segment["text"].strip()
-
-                srt_file.write(f"{i}\n{start_time} --> {end_time}\n{text}\n\n")
-        print(f"Transcription saved to {output_srt_path}")
-    except Exception as e:
-        print(f"Error during transcription: {e}")
-
-
 def format_timestamp(seconds):
     """Format seconds into SRT-compatible timestamp."""
     hours = int(seconds // 3600)
@@ -65,7 +40,6 @@ def format_timestamp(seconds):
     secs = int(seconds % 60)
     millisecs = int((seconds % 1) * 1000)
     return f"{hours:02}:{minutes:02}:{secs:02},{millisecs:03}"
-
 
 def translate_srt(input_file, output_file, source_lang, target_lang):
     """Translate the content of an SRT file using a translation model."""
@@ -87,7 +61,6 @@ def translate_srt(input_file, output_file, source_lang, target_lang):
     except Exception as e:
         print(f"Error during translation: {e}")
 
-
 def timestamp_to_ms(timestamp):
     """Convert SRT timestamp to milliseconds."""
     hours, minutes, seconds_ms = timestamp.replace(',', '.').split(':')
@@ -99,27 +72,12 @@ def timestamp_to_ms(timestamp):
         + int(ms)
     )
 
-
 # --------- MAIN FUNCTIONS --------- #
 
 def split_audio(video, video_blank, audio):
     """Split audio from the video and create a muted version."""
     extract_audio(video, audio)
     create_mute_video(video, video_blank)
-
-def split_into_sentences(text: str) -> List[str]:
-    """Split text into sentences using punctuation markers."""
-    # Split on period, exclamation mark, or question mark followed by space or newline
-    sentences = re.split(r'([.!?])\s+', text)
-    # Recombine sentences with their punctuation
-    result = []
-    for i in range(0, len(sentences)-1, 2):
-        if i+1 < len(sentences):
-            result.append(sentences[i] + sentences[i+1])
-    # Add the last segment if there's an odd number of segments
-    if len(sentences) % 2 == 1:
-        result.append(sentences[-1])
-    return [s.strip() for s in result if s.strip()]
 
 def transcribe_audio_with_sentence_timestamps(audio_path: str, output_srt_path: str):
     """Transcribe audio using Whisper and save it as an SRT file with sentence-level timestamps."""
@@ -217,15 +175,12 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
         raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
 
     try:
-        logger.info("Initializing XTTS-v2 model...")
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        logger.info(f"Using device: {device}")
         
         # Initialize XTTS-v2 model
         tts = TTS("tts_models/multilingual/multi-dataset/xtts_v2", 
                   gpu=(device == "cuda"))
         
-        logger.info("Loading SRT content...")
         with open(srt_output, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -242,16 +197,12 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
                 "duration_ms": end_ms - start_ms,
             })
 
-        logger.info(f"Found {len(segments)} segments to process")
-
         audio_segments = []
         for i, segment in enumerate(segments, 1):
             temp_audio_file = f"temp_segment_{i}.wav"
-            logger.info(f"Processing segment {i}/{len(segments)}: {segment['text'][:50]}...")
             
             try:
                 # Generate speech using XTTS-v2
-                logger.debug(f"Generating audio for segment {i}")
                 tts.tts_to_file(
                     text=segment["text"],
                     file_path=temp_audio_file,
@@ -263,7 +214,6 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
                     raise FileNotFoundError(f"Failed to generate audio file for segment {i}")
 
                 generated_audio = AudioSegment.from_wav(temp_audio_file)
-                logger.debug(f"Generated audio duration: {len(generated_audio)}ms")
                 
                 # Adjust timing
                 duration_ms = segment["duration_ms"]
@@ -276,10 +226,8 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
                 total_duration = sum(len(seg["audio"]) for seg in audio_segments)
                 padding = AudioSegment.silent(duration=max(0, segment["start_ms"] - total_duration))
                 audio_segments.append({"audio": padding + generated_audio})
-                logger.info(f"Successfully processed segment {i}")
-                
+
             except Exception as e:
-                logger.error(f"Error processing segment {i}: {str(e)}")
                 continue
             
             finally:
@@ -289,27 +237,11 @@ def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output
         if not audio_segments:
             raise Exception("No audio segments were successfully generated")
 
-        logger.info("Combining audio segments...")
         final_audio = sum((seg["audio"] for seg in audio_segments), AudioSegment.silent(0))
         final_audio.export(audio_output, format="wav")
-        logger.info(f"Cloned audio generated and saved to {audio_output}")
             
     except Exception as e:
-        logger.error(f"Error generating cloned audio: {str(e)}")
         raise
-
-# Function to test TTS model availability
-def test_tts_models():
-    """Test available TTS models and their capabilities."""
-    logger.info("Testing TTS models...")
-    try:
-        # Get list of available models
-        available_models = TTS().list_models()
-        logger.info("Available TTS models:")
-        for model in available_models:
-            logger.info(f"- {model}")
-    except Exception as e:
-        logger.error(f"Error listing TTS models: {str(e)}")
 
 def dub_video(video_output, video_no_audio, audio_output):
     """
@@ -334,33 +266,29 @@ def dub_video(video_output, video_no_audio, audio_output):
     except subprocess.CalledProcessError as e:
         print(f"Error during video dubbing: {e}")
 
-
 # --------- MAIN SCRIPT --------- #
 
 if __name__ == "__main__":
-    # Add debug test before main execution
-    test_tts_models()
-    
-    video_input = "results/video2/dcf_es.mp4"
-    lang_input = "es"
-    lang_output = "en"
+    video_input = "results/video1/video_eng.mp4"
+    lang_input = "en"
+    lang_output = "es"
 
-    results_dir = "results/video2/to_english"
+    results_dir = "results/video1/to_spanish"
     os.makedirs(results_dir, exist_ok=True)
 
-    video_no_audio = os.path.join(results_dir, "video_no_audio.mp4")
+    video_no_audio = os.path.join(results_dir, "../video_no_audio.mp4")
     video_output = os.path.join(results_dir, f"video_{lang_output}.mp4")
-    audio_input = os.path.join(results_dir, f"audio_{lang_input}.mp3")
+    audio_input = os.path.join(results_dir, f"../audio_{lang_input}.mp3")
     audio_output = os.path.join(results_dir, f"audio_{lang_output}.wav")
-    reference_audio = os.path.join(results_dir, "reference_audio.wav")
-    srt_input = os.path.join(results_dir, f"transcription_{lang_input}.srt")
+    reference_audio = os.path.join(results_dir, "../reference_audio.wav")
+    srt_input = os.path.join(results_dir, f"../transcription_{lang_input}.srt")
     srt_output = os.path.join(results_dir, f"transcription_{lang_output}.srt")
 
     # Extract reference audio first
     extract_reference_audio(video_input, reference_audio)
     
     # Rest of the pipeline
-    # split_audio(video_input, video_no_audio, audio_input)
+    split_audio(video_input, video_no_audio, audio_input)
     transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
-    # generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
-    # dub_video(video_output, video_no_audio, audio_output)
+    generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
+    dub_video(video_output, video_no_audio, audio_output)
