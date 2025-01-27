@@ -114,7 +114,10 @@ def generate_audio(srt_output, audio_output, lang_output):
         raise FileNotFoundError(f"SRT file not found: {srt_output}")
 
     try:
-        tts = TTS(model_name=f"tts_models/{lang_output}/css10/vits")
+        if lang_output == "en":
+            tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC")
+        else:
+            tts = TTS(model_name=f"tts_models/{lang_output}/css10/vits")
         with open(srt_output, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -182,15 +185,15 @@ def dub_video(video_output, video_no_audio, audio_output):
 # --------- MAIN SCRIPT --------- #
 
 if __name__ == "__main__":
-    video_input = "video.mp4"
-    lang_input = "en"
-    lang_output = "es"
+    video_input = "video_es.mp4"
+    lang_input = "es"
+    lang_output = "en"
+
+    results_dir = "results/to_english"
+    os.makedirs(results_dir, exist_ok=True)
 
     if not os.path.exists(video_input):
         raise FileNotFoundError(f"Input video file not found: {video_input}")
-
-    results_dir = "results"
-    os.makedirs(results_dir, exist_ok=True)
 
     video_no_audio = os.path.join(results_dir, "video_no_audio.mp4")
     video_output = os.path.join(results_dir, f"video_{lang_output}.mp4")
@@ -199,7 +202,7 @@ if __name__ == "__main__":
     srt_input = os.path.join(results_dir, f"transcription_{lang_input}.srt")
     srt_output = os.path.join(results_dir, f"transcription_{lang_output}.srt")
 
-    # split_audio(video_input, video_no_audio, audio_input)
-    # transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
-    # generate_audio(srt_output, audio_output, lang_output)
+    split_audio(video_input, video_no_audio, audio_input)
+    transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
+    generate_audio(srt_output, audio_output, lang_output)
     dub_video(video_output, video_no_audio, audio_output)
