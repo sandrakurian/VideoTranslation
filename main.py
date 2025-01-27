@@ -3,8 +3,14 @@ import subprocess
 import whisper
 from transformers import pipeline, AutoTokenizer, AutoModelForSeq2SeqLM
 import re
+import torch
 from TTS.api import TTS
 from pydub import AudioSegment
+
+import logging
+# Set up logging
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 # --------- HELPER FUNCTIONS --------- #
 
@@ -105,19 +111,76 @@ def transcribe_translate(audio, srt_orig, srt_trans, lang_input, lang_output):
     transcribe_audio_with_timestamps(audio, srt_orig)
     translate_srt(srt_orig, srt_trans, source_lang=lang_input, target_lang=lang_output)
 
+def extract_reference_audio(input_video, output_reference, duration_seconds=30):
+    """Extract a portion of audio to use as reference for voice cloning."""
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-i", input_video,
+                "-t", str(duration_seconds),  # Extract first 30 seconds
+                "-q:a", "0", "-map", "a",
+                output_reference
+            ],
+            check=True,
+        )
+        print(f"Reference audio extracted to {output_reference}")
+    except subprocess.CalledProcessError as e:
+        print(f"Error during reference audio extraction: {e}")
 
-def generate_audio(srt_output, audio_output, lang_output):
-    """Generate TTS audio synchronized with SRT timestamps."""
+def generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output):
+    """Generate TTS audio using voice cloning with language fallback support."""
     os.makedirs(os.path.dirname(audio_output), exist_ok=True)
 
     if not os.path.exists(srt_output):
         raise FileNotFoundError(f"SRT file not found: {srt_output}")
+    
+    if not os.path.exists(reference_audio):
+        raise FileNotFoundError(f"Reference audio file not found: {reference_audio}")
 
     try:
-        if lang_output == "en":
-            tts = TTS(model_name="tts_models/en/ljspeech/tacotron2-DDC")
-        else:
-            tts = TTS(model_name=f"tts_models/{lang_output}/css10/vits")
+        logger.info("Initializing TTS model...")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        logger.info(f"Using device: {device}")
+        
+        # Try different model options with specific language support
+        model_configs = [
+            {
+                "name": "tts_models/multilingual/multi-dataset/xtts_v2",
+                "languages": ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn"]
+            },
+            {
+                "name": "tts_models/multilingual/multi-dataset/your_tts",
+                "languages": ["en", "fr-fr", "pt-br"]
+            },
+            {
+                "name": f"tts_models/{lang_output}/css10/vits",
+                "languages": [lang_output]
+            }
+        ]
+        
+        tts = None
+        selected_model = None
+        
+        for model_config in model_configs:
+            try:
+                logger.info(f"Attempting to load model: {model_config['name']}")
+                temp_tts = TTS(model_name=model_config["name"], progress_bar=True)
+                if lang_output in model_config["languages"]:
+                    tts = temp_tts
+                    selected_model = model_config
+                    logger.info(f"Successfully loaded model with {lang_output} support: {model_config['name']}")
+                    break
+                else:
+                    logger.info(f"Model {model_config['name']} doesn't support {lang_output}")
+            except Exception as e:
+                logger.warning(f"Failed to load model {model_config['name']}: {str(e)}")
+                continue
+        
+        if tts is None:
+            raise Exception(f"No TTS model available that supports language: {lang_output}")
+
+        # Rest of the function remains the same until the TTS generation part
+        logger.info("Loading SRT content...")
         with open(srt_output, "r", encoding="utf-8") as f:
             content = f.read()
 
@@ -134,29 +197,74 @@ def generate_audio(srt_output, audio_output, lang_output):
                 "duration_ms": end_ms - start_ms,
             })
 
+        logger.info(f"Found {len(segments)} segments to process")
+
         audio_segments = []
-        for segment in segments:
-            temp_audio_file = f"temp_segment_{segments.index(segment)}.wav"
-            tts.tts_to_file(text=segment["text"], file_path=temp_audio_file)
+        for i, segment in enumerate(segments, 1):
+            temp_audio_file = f"temp_segment_{i}.wav"
+            logger.info(f"Processing segment {i}/{len(segments)}: {segment['text'][:50]}...")
+            
+            try:
+                # Generate speech using the selected model
+                logger.debug(f"Generating audio for segment {i}")
+                tts.tts_to_file(
+                    text=segment["text"],
+                    file_path=temp_audio_file,
+                    speaker_wav=reference_audio,
+                    language=lang_output
+                )
 
-            generated_audio = AudioSegment.from_wav(temp_audio_file)
-            duration_ms = segment["duration_ms"]
-            if len(generated_audio) > duration_ms:
-                generated_audio = generated_audio.speedup(playback_speed=len(generated_audio) / duration_ms)
-            elif len(generated_audio) < duration_ms:
-                silence = AudioSegment.silent(duration=duration_ms - len(generated_audio))
-                generated_audio += silence
+                if not os.path.exists(temp_audio_file):
+                    raise FileNotFoundError(f"Failed to generate audio file for segment {i}")
 
-            padding = AudioSegment.silent(duration=max(0, segment["start_ms"] - sum(len(seg["audio"]) for seg in audio_segments)))
-            audio_segments.append({"audio": padding + generated_audio})
+                generated_audio = AudioSegment.from_wav(temp_audio_file)
+                logger.debug(f"Generated audio duration: {len(generated_audio)}ms")
+                
+                # Adjust timing
+                duration_ms = segment["duration_ms"]
+                if len(generated_audio) > duration_ms:
+                    generated_audio = generated_audio.speedup(playback_speed=len(generated_audio) / duration_ms)
+                elif len(generated_audio) < duration_ms:
+                    silence = AudioSegment.silent(duration=duration_ms - len(generated_audio))
+                    generated_audio += silence
 
-            os.remove(temp_audio_file)
+                total_duration = sum(len(seg["audio"]) for seg in audio_segments)
+                padding = AudioSegment.silent(duration=max(0, segment["start_ms"] - total_duration))
+                audio_segments.append({"audio": padding + generated_audio})
+                logger.info(f"Successfully processed segment {i}")
+                
+            except Exception as e:
+                logger.error(f"Error processing segment {i}: {str(e)}")
+                continue
+            
+            finally:
+                if os.path.exists(temp_audio_file):
+                    os.remove(temp_audio_file)
 
+        if not audio_segments:
+            raise Exception("No audio segments were successfully generated")
+
+        logger.info("Combining audio segments...")
         final_audio = sum((seg["audio"] for seg in audio_segments), AudioSegment.silent(0))
         final_audio.export(audio_output, format="wav")
-        print(f"Audio generated and saved to {audio_output}")
+        logger.info(f"Cloned audio generated and saved to {audio_output}")
+            
     except Exception as e:
-        print(f"Error generating audio: {e}")
+        logger.error(f"Error generating cloned audio: {str(e)}")
+        raise
+
+# Function to test TTS model availability
+def test_tts_models():
+    """Test available TTS models and their capabilities."""
+    logger.info("Testing TTS models...")
+    try:
+        # Get list of available models
+        available_models = TTS().list_models()
+        logger.info("Available TTS models:")
+        for model in available_models:
+            logger.info(f"- {model}")
+    except Exception as e:
+        logger.error(f"Error listing TTS models: {str(e)}")
 
 def dub_video(video_output, video_no_audio, audio_output):
     """
@@ -185,24 +293,29 @@ def dub_video(video_output, video_no_audio, audio_output):
 # --------- MAIN SCRIPT --------- #
 
 if __name__ == "__main__":
-    video_input = "video_es.mp4"
-    lang_input = "es"
-    lang_output = "en"
+    # Add debug test before main execution
+    test_tts_models()
+    
+    video_input = "video_eng.mp4"
+    lang_input = "en"
+    lang_output = "es"
 
-    results_dir = "results/to_english"
+    results_dir = "results/to_spanish"
     os.makedirs(results_dir, exist_ok=True)
-
-    if not os.path.exists(video_input):
-        raise FileNotFoundError(f"Input video file not found: {video_input}")
 
     video_no_audio = os.path.join(results_dir, "video_no_audio.mp4")
     video_output = os.path.join(results_dir, f"video_{lang_output}.mp4")
     audio_input = os.path.join(results_dir, f"audio_{lang_input}.mp3")
-    audio_output = os.path.join(results_dir, f"audio_{lang_output}.mp3")
+    audio_output = os.path.join(results_dir, f"audio_{lang_output}.wav")
+    reference_audio = os.path.join(results_dir, "reference_audio.wav")
     srt_input = os.path.join(results_dir, f"transcription_{lang_input}.srt")
     srt_output = os.path.join(results_dir, f"transcription_{lang_output}.srt")
 
+    # Extract reference audio first
+    extract_reference_audio(video_input, reference_audio)
+    
+    # Rest of the pipeline
     split_audio(video_input, video_no_audio, audio_input)
     transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
-    generate_audio(srt_output, audio_output, lang_output)
+    generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
     dub_video(video_output, video_no_audio, audio_output)
