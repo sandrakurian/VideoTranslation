@@ -269,26 +269,30 @@ def dub_video(video_output, video_no_audio, audio_output):
 # --------- MAIN SCRIPT --------- #
 
 if __name__ == "__main__":
-    video_input = "results/video1/video_eng.mp4"
-    lang_input = "en"
-    lang_output = "es"
+    video_input = "results/video3/video.mp4"
+    results_dir = "results/video3/to_english"
+    lang_input = "es"
+    lang_output = "en"
 
-    results_dir = "results/video1/to_spanish"
+    if not os.path.exists(video_input):
+        raise FileNotFoundError(f"Input video file not found: {video_input}")
+
     os.makedirs(results_dir, exist_ok=True)
 
     video_no_audio = os.path.join(results_dir, "../video_no_audio.mp4")
     video_output = os.path.join(results_dir, f"video_{lang_output}.mp4")
-    audio_input = os.path.join(results_dir, f"../audio_{lang_input}.mp3")
-    audio_output = os.path.join(results_dir, f"audio_{lang_output}.wav")
-    reference_audio = os.path.join(results_dir, "../reference_audio.wav")
-    srt_input = os.path.join(results_dir, f"../transcription_{lang_input}.srt")
-    srt_output = os.path.join(results_dir, f"transcription_{lang_output}.srt")
 
-    # Extract reference audio first
-    extract_reference_audio(video_input, reference_audio)
+    audio_input = os.path.join(results_dir, f"../audio_{lang_input}.mp3")
+    audio_reference = os.path.join(results_dir, "../reference_audio.wav")
+    audio_output = os.path.join(results_dir, f"audio_{lang_output}.mp3")
+
+    srt_input = os.path.join(results_dir, f"../transcript_{lang_input}.srt")
+    srt_output = os.path.join(results_dir, f"transcript_{lang_output}.srt")
+
     
-    # Rest of the pipeline
     split_audio(video_input, video_no_audio, audio_input)
-    transcribe_translate(audio_input, srt_input, srt_output, lang_input, lang_output)
-    generate_cloned_audio(srt_output, audio_output, reference_audio, lang_output)
+    transcribe_audio_with_sentence_timestamps(audio_input, srt_input)
+    translate_srt(srt_input, srt_output, lang_input, lang_output)
+    extract_reference_audio(video_input, audio_reference)
+    generate_cloned_audio(srt_output, audio_output, audio_reference, lang_output)
     dub_video(video_output, video_no_audio, audio_output)
